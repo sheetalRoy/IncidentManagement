@@ -1,0 +1,130 @@
+<?php
+
+namespace App\Http\Controllers;
+use App\incident;
+use App\media;
+use App\member;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
+
+class saveController extends Controller
+{
+    /* Home Page : Display Incident List */
+    public function loadIncidentlist(){
+        $incidentObj = DB::table('incident')->paginate(10);
+        return view('new',['inc'=>$incidentObj]);
+    }
+
+    public function viewIncidentDetails($eid){
+         $obj = DB::table('incident')->where('id', $eid)->first();
+         $statusId = DB::table('status')->where('id',$obj->incident_severity)->first();
+         $memberId = DB::table('member')->where('id',$obj->added_name)->first();
+         $priorityId = DB::table('priority')->where('id',$obj->priority)->first();
+         $mediaId = $obj->incident_media;
+         if($mediaId>0){
+             $mediaObj = DB::table('media')->where('id',$obj->incident_media)->first();
+             $fileName = $mediaObj->original_filename;
+             
+         }else{
+              $fileName = '';
+         }
+       return response()->json([
+                    'body' => view('view_incident_details', ['inc' => $obj,'media' =>$fileName,
+                        'status'=>$statusId,'member'=>$memberId,'priority'=>$priorityId])->render(),
+                    'success' => true
+        ]);
+
+    }
+    /*Load Incident Create Page*/
+    public function createIncident(){
+        $obj = DB::table('member')->get();
+        $status = DB::table('status')->get();
+        $priority = DB::table('priority')->get();
+        return response()->json([
+                    'body' => view('create_incident',['member' => $obj,'status'=>$status,
+                            'priority'=>$priority])->render(),
+                    'success' => true
+        ]);
+    }
+    public function showMedia(){
+        $obj = DB::table('media')->get();
+        return response()->json([
+                    'body' => view('show_media',['media' =>$obj])->render(),
+                    'success' => true
+        ]);
+    }
+    public function searchIncident(){
+        return response()->json([
+                    'body' => view('search_incident')->render(),
+                    'success' => true
+        ]);
+    }
+    /* Save Incident(Event) Details */
+    public function saveIncidentDetails(Request $request) {
+        try{
+            DB::beginTransaction();
+        $incidentName = $request->request->get('name');
+        $description = $request->request->get('description');
+        $severity = $request->request->get('satus');
+        $label = $request->request->get('label');
+        $addedName = $request->request->get('member');
+        $createDate = $request->request->get('createDate');
+        $endDate = $request->request->get('endDate');
+        $priority = $request->request->get('priority');
+        $location = $request->request->get('location');
+        $file = $request->file('media');
+        $filename= $file->getClientOriginalName();
+        $fileExt =$file->getClientOriginalExtension();
+        
+        $path = 'storage/app/public/upload/'.$filename;
+//        echo $path;die();
+//        $onlyname = pathinfo($name, PATHINFO_FILENAME);
+//        $file->move('storage/upload', $onlyname);
+//        Storage::put('public/upload', $file);
+        Storage::putFileAs('public', $file, $filename);
+        DB::table('media')->insert(
+                ['original_filename' => $filename, 'file_extension' =>$fileExt,
+                    'file_path' => $path,
+                    'record_insert_date' =>new \DateTime()]
+        );
+       $mediaObj = DB::table('media')->where(['original_filename' => $filename])->first();
+//       echo $mediaObj->id;die();
+        DB::table('incident')->insert(
+                ['incident_name' => $incidentName, 'incident_description' =>$description,
+                    'incident_severity' =>$severity, 'added_name' =>$addedName,
+                    'label' => $label, 'location' => $location,
+                    'create_date' =>new \DateTime($createDate),
+                    'end_date' => new \DateTime($endDate),
+                    'priority'=>$priority,'incident_media' =>$mediaObj->id]
+        );
+         DB::commit();
+//        $incidentDetails = new incident();
+//        $incidentDetails->incident_name = $incidentName;
+////        $incidentDetails->create_date = new \DateTime($createDate);
+//        $incidentDetails->save();
+        $memberObj = DB::table('member')->get();
+        $statusObj = DB::table('status')->get();
+        $priorityObj = DB::table('priority')->get();
+        return response()->json([
+                    'body' => view('create_incident',['member' => $memberObj,'status'=>$statusObj,
+                            'priority'=>$priorityObj])->render(),
+                    'success' => true
+        ]);
+        } catch (Exception $ex) {
+             return response()->json(['success' => false]);
+            DB::rollBack();
+        }
+        
+    }
+    /*Show Member List*/
+    public function memberList(){
+        $member = DB::table('member')->get();
+        return response()->json([
+                    'body' => view('member_list',['member'=>$member])->render(),
+                    'success' => true
+        ]);
+    }
+
+}
